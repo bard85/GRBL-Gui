@@ -1,2 +1,3 @@
 # GRBL-Gui
-A simplistic gui for grbl
+
+A simplistic gui to use with grbl written in Python3
