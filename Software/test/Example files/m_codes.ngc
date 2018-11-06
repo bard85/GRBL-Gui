@@ -20,13 +20,17 @@
 ;M3, M4 needs a set speed(S) from before or same row
 ;M-codes can only be combined with S-parameter
 
+;Examples of ok M-codes
 M02
-M03
-M04 S1000 S23
-M30
-M40
-M70
-MPA
+M03 ;This may give error if no spindlespeed is set before
+M04 S1000 ;See above, this guarantees no errors
+M03 ;This is ok now since we set speed above
+
+;Examples of M-codes failing
+M8 M3 S3000 ;Can't use 2 M-codes
+M3 G00 X0 ;Cant mix M & G
+M90 ;Unsupported M-code
+M03 S-200 ;Negative rpm, not ok
 
 
 
