@@ -1,0 +1,24 @@
+;This file is a test for line numbering syntax and describes the rules for line numbering
+;A line number starts with an N followed by a number(Integer)
+;The N must be first character on the line
+;The number following the N needs to be >= 0
+;Only one N can be present on one line
+
+;Examples of a program with ok Line numbering:
+
+N01 G90
+N10 G01 X0.04
+N20 M30
+N30 ;Blank row
+
+
+
+;Examples of illegal uses of line numbering:
+
+G90 N01 ;N is not first char)
+N02 N03 G90 ;Multiple N's found
+N-3 ;Negative line number
+N12.3 G90 ;Number is not an integer
+N G90 ;Missing a line number
+
+;Illegal uses of line numbering will result in error and the program will not be able to start

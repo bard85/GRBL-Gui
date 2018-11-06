@@ -1,0 +1,33 @@
+;This file is a test for M syntax and describes the rules M-code
+;
+;Supported M-codes by the GRBL(1.1) is:
+;M0: Program stop
+;M2: Program End
+;M3: Start spindle CW
+;M4: Start spindle CCW
+;M5: Stop spindle
+;M7*: Mist Coolant on(*Not supported by the validator)
+;M8: Flood coolant on
+;M9: Coolant off
+;M30: Program end(see M02) and return to program start
+;M56*: Parking mode(*Not supported by the validator)
+;
+;*Needs to be enabled during compiling to Arduino, not supported for now
+;General syntax:
+;M and G-codes can't be combined on same row
+;Multiple M-codes not allowed
+;M3, M4 can be set with S-parameter aswell
+;M3, M4 needs a set speed(S) from before or same row
+;M-codes can only be combined with S-parameter
+
+M02
+M03
+M04 S1000 S23
+M30
+M40
+M70
+MPA
+
+
+
+;Illegal uses of M-code will result in error and the program will not be able to start

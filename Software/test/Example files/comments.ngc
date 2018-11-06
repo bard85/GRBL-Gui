@@ -1,7 +1,6 @@
 ;This file is a test for comment syntax and describes the rules of comments
 ;Comments can be inside brackets or after a semi colon
 ;All text after a semi colon is treated as a comment
-;There can only be one semi colon on a line
 ;Semi colons cant be inside brackets
 ;It is not legal to nest a comment inside another comment
 ;A comment cant be between an instruction, G/M-code and its value
@@ -11,10 +10,12 @@ G01 (this comment is ok) X0.4 Y0.0 ;And so is this comment
 G01 (This is comment number one) X0 (This is comment number two) Y0 (This is a third comment)
 M03 ;This comment is ok
 G90 ;Comment start(this is actually ok to do)
+(This is very much ok)
 
 ;Examples of illegal uses of comments:
-G(this comment is between instruction and value, not ok)90
+
 G90 (Starting a comment but not closing it with end bracket
+G90 ) Brackets needs to be in correct order (
 G90 (Trying to nest a comment inside another comment   (nested comment)   )
 G90 (Semi colon inside brackets is not ok ;trying to nest a semi colon within brackets)
 
