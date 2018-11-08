@@ -35,8 +35,6 @@ def validate_gcode_program(file_path):
                     if not status:
                         error_list.append([str(idx+1),line])
                         continue
-                if len(line) == 0:
-                    continue
 
                 #Looking for line numbering
                 if ('N') in line:
@@ -44,8 +42,6 @@ def validate_gcode_program(file_path):
                     if not status:
                         error_list.append([str(idx+1),line])
                         continue
-                if len(line) == 0:
-                    continue
 
                 #Looking for spindle speed
                 if ('S') in line:
@@ -55,8 +51,6 @@ def validate_gcode_program(file_path):
                         continue
                     else:
                         spindle_speed_set = True
-                if len(line) == 0:
-                    continue
 
                 #Looking for feed rate
                 if ('F') in line:
@@ -66,8 +60,7 @@ def validate_gcode_program(file_path):
                         continue
                     else:
                         feed_rate_set = True
-                if len(line) == 0:
-                    continue
+                
                 #At this point to only remains should be G & M codes
                 
                 #Looking for M-codes
@@ -76,17 +69,20 @@ def validate_gcode_program(file_path):
                     if not status:
                         error_list.append([str(idx+1),line])
                         continue
-                if len(line) == 0:
-                    continue
 
                 #Looking for G-codes
                 if ('G') in line:
-                    status, line = check_g_code(line, feed_rate_set)
+                    status, line, current_modal_motion = check_g_code(line, feed_rate_set, current_modal_motion)
                     if not status:
                         error_list.append([str(idx+1),line])
                         continue
-                if len(line) == 0:
-                    continue
+
+                #At this point, only XYZ,IJK values should remain
+                if current_modal_motion == "G0" or current_modal_motion == "G1":
+                    status, line = check_linear(line)
+                    if not status:
+                        error_list.append([str(idx+1),line])
+                        continue
                 print(line)
         print(error_list)
     except Exception as e:
@@ -193,7 +189,7 @@ def check_m_code(line, spindle_speed_set):
     #See documentation for the syntax used in this function
     #or the m_codes.ngc file
     #Modal groups for supported M-codes
-    grp0 = "M0", "M1", "M2"
+    grp0 = "M0", "M1", "M2", "M30"
     grp1 = "M3", "M4", "M5"
     grp2 = "M8", "M9"
     temp_line = line
@@ -235,18 +231,18 @@ def check_m_code(line, spindle_speed_set):
     return True, line
 
 
-def check_g_code(line, feed_rate_set):
+def check_g_code(line, feed_rate_set, current_modal_motion):
     #See documentation for the syntax used in this function
     #or the g_codes.ngc file
     #Modal groups for supported G-codes
-    grp0 = "G4", "G10", "G28", "G30", "G53", "G92", "G92.1" #non-modal
-    grp1= "G0", "G1", "G2", "G3", "G38.2", "G80", "G81", "G82", "G83", "G84", "G85", "G86", "G87", "G88", "G89" #motion
+    grp0 = "G4", "G10 L2","G10 L20", "G28", "G28.1", "G30", "G30.1", "G53", "G92", "G92.1" #non-modal
+    grp1= "G0", "G1", "G2", "G3", "G38.2", "G38.3", "G38.4", "G38.5", "G80", "G81", "G82", "G83", "G84", "G85", "G86", "G87", "G88", "G89" #motion
     grp2 = "G17", "G18", "G19"  #plane selection
     grp3 = "G90", "G91" #distance mode
     grp4 = "G93", "G94" #feed rate mode
     grp5 = "G20", "G21" #units
     grp6 = "G40", #cutter radius compensation
-    grp7 = "G43", "G49" #tool length offset
+    grp7 = "G43.1", "G49" #tool length offset
     grp8 = "G98", "G99" #return mode in canned cycles
     grp9 = "G54", "G55", "G56", "G57", "G58", "G59" #coordinate system selection
     grp10 = "G61", #path control mode
@@ -257,7 +253,7 @@ def check_g_code(line, feed_rate_set):
         g_value = get_value(temp_line, temp_line.find('G'))
         if len(g_value) == 0:
             #No value assigned
-            return False, "6.1"
+            return False, "6.1", current_modal_motion
         else:
             g_value = "G"+g_value
             if g_value in grp0:
@@ -284,36 +280,78 @@ def check_g_code(line, feed_rate_set):
                 group_belong = 10
             else:
                 #No group found, means unsupported
-                return False, "6.2"
+                return False, "6.2", current_modal_motion
             g_group.append(group_belong)
             g_code.append(g_value)
             temp_line = temp_line[temp_line.find('G')+1:]
     for grp in g_group:
         if g_group.count(grp) > 1:
             #We got a G-code in same modal group more than once
-            return False, "6.3"
+            return False, "6.3", current_modal_motion
 
     if 0 in g_group and 1 in g_group:
         #Combined group 0 and 1, not ok
-        return False, "6.4"
+        return False, "6.4", current_modal_motion
 
-    if 1 in g_group and "G0" not in g_code and not feed_rate_set:
+    if 1 in g_group and not "G0" in g_code and not feed_rate_set:
         #Trying to move, no feed rate set though
         #Lets see if it really is a move going on
         if "X" in line or "Y" in line or "Z" in line:
             #Yep, def trying to move
-            return False, "6.5"
+            return False, "6.5", current_modal_motion
 
     #Hantera specialfall som kräver mer data från grupp 0
     #Beräkna att G2/3 är ok
+    #Om grupp 1 sker så skall XYZIJK vara med också(G0 undantag)
+    if 1 in g_group and not "G0" in g_code:
+        #We got a move incoming, need more parameters depending case!
+        if "G1" in g_code:
+            #Need at least X,Y or Z, else error
+            if not("X" in line or "Y" in line or "Z" in line):
+                #No value passed, error..
+                return False, "6.6", current_modal_motion
+        elif "G2" in g_code or "G3" in g_code:
+            #Need at least X,Y and I,J. If Z, K is needed aswell
+            if not ("X" in line and "Y" in line and "I" in line and "J" in line):
+                #Missing important parameters, error
+                return False, "6.7", current_modal_motion
+            else:
+                #Looking good, lets see if Z and K is in
+                if "Z" in line:
+                    if not "K" in line:
+                        #Got Z but no K..
+                        return False, "6.7", current_modal_motion
+                if "K" in line:
+                    if not "Z" in line:
+                        #Got K but no Z..
+                        return False, "6.7", current_modal_motion
 
 
     #Everything is ok
     for g in g_code:
         line = line.replace(g,"")
     #Returna nytt modalt läge från grupp 1
-    return True, line
+    if 1 in g_group:
+        #New modal mode
+        return True, line, g_code[g_group.index(1)]
+    else:
+        return True, line, current_modal_motion
 
+
+def check_linear(line):
+    #Checking so X,Y,Z all got correct values
+    check_list = "X", "Y", "Z"
+    for c in check_list:
+        if line.count(c) > 1:
+            #To many....
+            return False, "7.1"
+        if c in line:
+            c_value = get_value(line, line.find(c))
+            if len(c_value) == 0:
+                #No value set
+                return False, "7.2"
+            line = line.replace(c+c_value,"")
+    return True, line
 
 #validate_gcode_program("Example files/comments.ngc")
 #validate_gcode_program("Example files/line_numbering.ngc")
@@ -346,5 +384,9 @@ Validation errors:
 6.3: G-koder i samma modalgrupp hittad
 6.4: G-kod ur modalgrupp 1 och 0 funna, ej ok kombination
 6.5: Försöker röra sig utan att feedrate är satt(G0 undantag)
+6.6: Kör en G1 men saknar X,Y eller Z värde
+6.7: Kör en G2/3 men saknar parametrar(XYZ, IJK)
+7.1: För många X,Y,Z hittade för linjär rörelse
+7.2: Inget värde satt på X,Y eller Z
 """
 
