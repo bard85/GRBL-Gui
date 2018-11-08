@@ -1,0 +1,34 @@
+;This file is a test for G syntax and describes the rules G-code
+;
+;General syntax:
+
+;2 G in same modal group can't be entered on same line
+;Modal groups for G(supported by GRBL1.1) are as follow:
+;Group 0 = {G4, G10, G28, G30, G53, G92, G92.1}
+;Group 1= {G0, G1, G2, G3, G38.2, G80, G81, G82, G83, G84, G85, G86, G87, G88, G89} motion
+;Group 2 = {G17, G18, G19} plane selection
+;Group 3 = {G90, G91} distance mode
+;Group 4 = {G93, G94} feed rate mode
+;Group 5 = {G20, G21} units
+;Group 6 = {G40} cutter radius compensation
+;Group 7 = {G43, G49} tool length offset
+;Group 8 = {G98, G99} return mode in canned cycles
+;Group 9 = {G54, G55, G56, G57, G58, G59} coordinate system selection
+;Group 10 = {G61} path control mode
+;
+;These G can be combined with other groups(contaning M)
+;If using a command from motion group, feed rate needs to be set before or same line
+;Group 0 and Group 1 can´t be combined
+
+G1 G90 G20 X12 F100
+;Examples of ok G-codes
+N10 G0 G90
+N20 G0 X100 Y 30.5
+N30 G1 F200 X20 Y12 Z-13.2 G91
+
+;Examples of G-codes failing
+
+
+
+
+;Illegal uses of G-code will result in error and the program will not be able to start

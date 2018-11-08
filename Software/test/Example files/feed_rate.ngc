@@ -1,0 +1,20 @@
+;This file is a test for feed rate syntax and describes the rules for F-parameter
+;Feed rate F is set with parameter F followed by a number(Integer, float)
+;Feed rate needs to be >=0
+;Only one F can be present on a line
+
+;Examples of a program with ok feed rate:
+
+N01 F1000
+N10 M03 F1000
+N20 G01 X10 F1000
+
+
+
+;Examples of illegal uses of spindle speed:
+
+N10 F-300 ;Negative value
+N20 F2000 F3000 ; Multiple S is not allowed
+N30 F ; No value assigned to S
+
+;Illegal uses of feed rate will result in error and the program will not be able to start

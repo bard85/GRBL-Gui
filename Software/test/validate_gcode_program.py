@@ -14,12 +14,12 @@ def validate_gcode_program(file_path):
     it means that the line was ok. If we got some leftovers there is an error
     with the line(unknown commands, missed comment signs etc..)
     """
-    error_list = []         #Errors mean something will go wrong during a run, will not let you run the program
-    program_ok = True       #Should stay ok during the validation, if not an error was found
-    last_x = 0.0            #Used for arc-calculations
-    last_y = 0.0            #Used for arc-calculations
-    last_z = 0.0            #Used for arc-calculations
-    current_modal = "N/A"   #The last modal-mode set for movements
+    error_list = []                 #Errors mean something will go wrong during a run, will not let you run the program
+    program_ok = True               #Should stay ok during the validation, if not an error was found
+    last_x = 0.0                    #Used for arc-calculations
+    last_y = 0.0                    #Used for arc-calculations
+    last_z = 0.0                    #Used for arc-calculations
+    current_modal_motion = "N/A"    #The last modal-mode set for movements
     spindle_speed_set = False
     feed_rate_set = False
     try:
@@ -29,30 +29,65 @@ def validate_gcode_program(file_path):
                 if len(line) == 0:
                     continue
 
-                #Checking for comment(s)
-                status, line = check_comments(line)
-                if not status:
-                    error_list.append([idx+1,line])
-                    continue
+                #Looking for comment(s)
+                if ('(') in line or (')') in line or (';') in line:
+                    status, line = check_comments(line)
+                    if not status:
+                        error_list.append([str(idx+1),line])
+                        continue
                 if len(line) == 0:
                     continue
 
-                #Checking line numbering
-                status, line = check_numbering(line)
-                if not status:
-                    error_list.append([idx+1,line])
-                    continue
+                #Looking for line numbering
+                if ('N') in line:
+                    status, line = check_numbering(line)
+                    if not status:
+                        error_list.append([str(idx+1),line])
+                        continue
                 if len(line) == 0:
                     continue
 
+                #Looking for spindle speed
+                if ('S') in line:
+                    status, line = check_spindle_speed(line)
+                    if not status:
+                        error_list.append([str(idx+1),line])
+                        continue
+                    else:
+                        spindle_speed_set = True
+                if len(line) == 0:
+                    continue
+
+                #Looking for feed rate
+                if ('F') in line:
+                    status, line = check_feed_rate(line)
+                    if not status:
+                        error_list.append([str(idx+1),line])
+                        continue
+                    else:
+                        feed_rate_set = True
+                if len(line) == 0:
+                    continue
+                #At this point to only remains should be G & M codes
+                
                 #Looking for M-codes
-                status, line, spindle_speed_set = check_m_code(line, spindle_speed_set)
-                if not status:
-                    error_list.append([idx+1,line])
-                    continue
+                if ('M') in line:
+                    status, line = check_m_code(line, spindle_speed_set)
+                    if not status:
+                        error_list.append([str(idx+1),line])
+                        continue
                 if len(line) == 0:
                     continue
 
+                #Looking for G-codes
+                if ('G') in line:
+                    status, line = check_g_code(line, feed_rate_set)
+                    if not status:
+                        error_list.append([str(idx+1),line])
+                        continue
+                if len(line) == 0:
+                    continue
+                print(line)
         print(error_list)
     except Exception as e:
         #Something went wrong opening the file...
@@ -61,9 +96,9 @@ def validate_gcode_program(file_path):
 def modify_line(line):
     #Cleaning up the line
     line = line.strip().replace(" ","").replace("\t","").upper()
-    line = line.replace("M00","M0").replace("M02","M2").replace("M03","M3")
-    line = line.replace("M04","M4").replace("M05","M5").replace("M08","M8")
-    line = line.replace("M09","M9")
+    line = line.replace("M00","M0").replace("M01","M1").replace("M02","M2")
+    line = line.replace("M03","M3").replace("M04","M4").replace("M05","M5")
+    line = line.replace("M08","M8").replace("M09","M9")
     line = line.replace("G00","G0").replace("G01","G1").replace("G02","G2")
     line = line.replace("G03","G3")
     return line
@@ -80,26 +115,24 @@ def get_value(line, instruction_idx):
 def check_comments(line):
     #See documentation for the syntax used in this function
     #or the comment.ngc file
-    
     #Starting to analyse semi colon's
-    if line.count(';') == 1:
+    if line.count(';') >= 1:
         line = line[:line.find(';')]
     
     #Analyzing comments in brackets
     if line.count('(') != line.count(')'):
         #This is bad, the amount should match...
-        return False, 1
+        return False, "1.1"
     if line.count('(') > 0:
         while line.count('(') > 0:
             if line.find('(') > line.find(')'):
                 #The sit in the wrong order )(
-                return False, 1
+                return False, "1.2"
             if line.count('(') > 1:
                 if line[line.find('(')+1:].find('(') < line[line.find('(')+1:].find(')'):
                    #Nesting (  (   ))
-                    return False, 1
+                    return False, "1.3"
             line = line[:line.find('(')]+line[line.find(')')+1:]
-    
     return True, line
 
 
@@ -107,93 +140,211 @@ def check_numbering(line):
     #See documentation for the syntax used in this function
     #or the line_numbering.ngc file
 
-    if not line.count('N') > 0:
-        #No N present, nothing to do anymore
-        return True, line
-
     if line.count('N') > 1:
         #To many N, error...
-        return False, 2
+        return False, "2.1"
 
     if line[0] != 'N':
         #N is in the wrong spot
-        return False, 2
+        return False, "2.2"
     number_value = get_value(line, 0)
     if len(number_value) == 0 or '.' in number_value or int(number_value) <0:
         #No line number set, its a float or its negative
-        return False, 2
-    elif len(number_value) == len(line)+1:
-        #Only the number left, line is now empty
-        return True, ""
-    else:
-        line = line[len(number_value)+1:]
+        return False, "2.3"
+
+    line = line[len(number_value)+1:]
+    return True, line
+
+
+def check_spindle_speed(line):
+    #See documentation for the syntax used in this function
+    #or the spindle_speed.ngc file
+
+    if line.count('S') > 1:
+        #To many S found
+        return False, "3.1"
+
+    number_value = get_value(line, line.find('S'))
+    if len(number_value) == 0 or float(number_value) < 0:
+        #Negative value or no assigned value
+        return False, "3.2"
+    #All ok
+    line = line.replace("S"+number_value, "")
+    return True, line
+
+def check_feed_rate(line):
+    #See documentation for the syntax used in this function
+    #or the feed_rate.ngc file
+
+    if line.count('F') > 1:
+        #To many S found
+        return False, "4.1"
+
+    number_value = get_value(line, line.find('F'))
+    if len(number_value) == 0 or float(number_value) < 0:
+        #Negative value or no assigned value
+        return False, "4.2"
+    #All ok
+    line = line.replace("F"+number_value, "")
     return True, line
 
 
 def check_m_code(line, spindle_speed_set):
-    #After this function the return line should be empty
-    #If not its a failed check
-    if line.count('M') > 1:
-        #To many M's, error..
-        return False, 3, spindle_speed_set
-    if 'G' in line:
-        #Can't combine M's & G's...
-        return False, 3, spindle_speed_set
-    
-    #Checking codes with no optional arguments
-    m_no_args = "M0","M2","M5","M8","M9","M30"
-    for m in m_no_args:
-        if m in line:
-            line = line.replace(m,"")
-            if len(line) == 0:
-                return True, "", spindle_speed_set
-            else:
-                return False, 3, spindle_speed_set
-    
-    #Still here? M-code now should be spindle start, else unknown..
-    if "M3" in line or "M4" in line:
-        #We got spindle start, what about speed?
-        if line == "M3" or line == "M4":
-            #Speed needs to be set before, lets hope so
-            if spindle_speed_set:
-                return True, "", spindle_speed_set
-            else:
-                return False, 3, spindle_speed_set
+    #See documentation for the syntax used in this function
+    #or the m_codes.ngc file
+    #Modal groups for supported M-codes
+    grp0 = "M0", "M1", "M2"
+    grp1 = "M3", "M4", "M5"
+    grp2 = "M8", "M9"
+    temp_line = line
+    m_group = []
+    m_code = []
+    for i in range(line.count('M')):
+        m_value = get_value(temp_line, temp_line.find('M'))
+        if len(m_value) == 0:
+            #No value assigned
+            return False, "5.1"
         else:
-            #Ok, we got spindle M3/4 and some more, lets hope its an S
-            if "S" in line:
-                if line.count('S') > 1:
-                    return False, 3, spindle_speed_set
-                else:
-                    number_value = get_value(line, line.find('S'))
-                    if len(number_value) == 0 or float(number_value) <0:
-                        #No speed set its negative
-                        return False, 3, spindle_speed_set
-                    else:
-                        line = line.replace("M3","").replace("M4","")
-                        line = line.replace("S"+number_value,"")
-                        if len(line) == 0:
-                            return True, "", True
-                        else:
-                            #Still got something in string that shouldnt be there
-                            return False, 3, spindle_speed_set
+            m_value = "M"+m_value
+            if m_value in grp0:
+                group_belong = 0
+            elif m_value in grp1:
+                group_belong = 1
+            elif m_value in grp2:
+                group_belong = 2
             else:
-                #No speed in here..
-                return False, 3, spindle_speed_set
-    else:
-        #Got a unsupported M-code here or some weird syntax for Mxx
-        return False, 3, spindle_speed_set
+                #No group found, means unsupported
+                return False, "5.2"
+            m_group.append(group_belong)
+            m_code.append(m_value)
+            temp_line = temp_line[temp_line.find('M')+1:]
+    for grp in m_group:
+        if m_group.count(grp) > 1:
+            #We got a M-code in same modal group more than once
+            return False, "5.3"
+
+    #Do we want to start spindle? Better have set a speed from before
+    if "M3" in m_code or "M4" in m_code:
+        if not spindle_speed_set:
+            #No speed set, error
+            return False, "5.4"
+
+    #Everything seems to look cool
+    for m in m_code:
+        line = line.replace(m,"")
+    return True, line
+
+
+def check_g_code(line, feed_rate_set):
+    #See documentation for the syntax used in this function
+    #or the g_codes.ngc file
+    #Modal groups for supported G-codes
+    grp0 = "G4", "G10", "G28", "G30", "G53", "G92", "G92.1" #non-modal
+    grp1= "G0", "G1", "G2", "G3", "G38.2", "G80", "G81", "G82", "G83", "G84", "G85", "G86", "G87", "G88", "G89" #motion
+    grp2 = "G17", "G18", "G19"  #plane selection
+    grp3 = "G90", "G91" #distance mode
+    grp4 = "G93", "G94" #feed rate mode
+    grp5 = "G20", "G21" #units
+    grp6 = "G40", #cutter radius compensation
+    grp7 = "G43", "G49" #tool length offset
+    grp8 = "G98", "G99" #return mode in canned cycles
+    grp9 = "G54", "G55", "G56", "G57", "G58", "G59" #coordinate system selection
+    grp10 = "G61", #path control mode
+    temp_line = line
+    g_group = []
+    g_code = []
+    for i in range(line.count('G')):
+        g_value = get_value(temp_line, temp_line.find('G'))
+        if len(g_value) == 0:
+            #No value assigned
+            return False, "6.1"
+        else:
+            g_value = "G"+g_value
+            if g_value in grp0:
+                group_belong = 0
+            elif g_value in grp1:
+                group_belong = 1
+            elif g_value in grp2:
+                group_belong = 2
+            elif g_value in grp3:
+                group_belong = 3
+            elif g_value in grp4:
+                group_belong = 4
+            elif g_value in grp5:
+                group_belong = 5
+            elif g_value in grp6:
+                group_belong = 6
+            elif g_value in grp7:
+                group_belong = 7
+            elif g_value in grp8:
+                group_belong = 8
+            elif g_value in grp9:
+                group_belong = 9
+            elif g_value in grp10:
+                group_belong = 10
+            else:
+                #No group found, means unsupported
+                return False, "6.2"
+            g_group.append(group_belong)
+            g_code.append(g_value)
+            temp_line = temp_line[temp_line.find('G')+1:]
+    for grp in g_group:
+        if g_group.count(grp) > 1:
+            #We got a G-code in same modal group more than once
+            return False, "6.3"
+
+    if 0 in g_group and 1 in g_group:
+        #Combined group 0 and 1, not ok
+        return False, "6.4"
+
+    if 1 in g_group and "G0" not in g_code and not feed_rate_set:
+        #Trying to move, no feed rate set though
+        #Lets see if it really is a move going on
+        if "X" in line or "Y" in line or "Z" in line:
+            #Yep, def trying to move
+            return False, "6.5"
+
+    #Hantera specialfall som kräver mer data från grupp 0
+    #Beräkna att G2/3 är ok
+
+
+    #Everything is ok
+    for g in g_code:
+        line = line.replace(g,"")
+    #Returna nytt modalt läge från grupp 1
+    return True, line
+
 
 #validate_gcode_program("Example files/comments.ngc")
 #validate_gcode_program("Example files/line_numbering.ngc")
-validate_gcode_program("Example files/m_codes.ngc")
+#validate_gcode_program("Example files/spindle_speed.ngc")
+#validate_gcode_program("Example files/feed_rate.ngc")
+#validate_gcode_program("Example files/m_codes.ngc")
+#validate_gcode_program("Example files/g_codes.ngc")
 
+validate_gcode_program("Example files/test.ngc")
 
 
 """
 Validation errors:
-1: Fel syntax för kommentar
-2: Fel syntax för radnumrering
-3: Fel syntax för M-kod
+1.1: Antalet paranteser stämmer inte överrens. Kommentar är då inte öppnad/stängd korrekt. Alternativt en nästlad ; inuti paranteser
+1.2: Paranteser sitter i omvänd ordning ) (
+1.3: Nästlad paranteskommentar ( () )
+2.1: Fler än en radnumrering hittad
+2.2: N är inte första tecken på raden
+2.3: Ogiltigt värde på N. Inget värde tilldelad, decimaltal eller negativt värde
+3.1: För många S hittade
+3.2: Värde på S är mindre än 0 eller ej tilldelat
+4.1: För många F hittade
+4.2: Värde på F är mindre än 0 eller ej tilldelat
+5.1: Saknas värde på ett M
+5.2: Ogiltig/Okänd M-kod
+5.3: M-koder i samma modalgrupp hittad 
+5.4: Försöker starta spindel men ingen hastighet satt
+6.1: Saknas värde på ett G
+6.2: Ogiltig/Okänd G-kod
+6.3: G-koder i samma modalgrupp hittad
+6.4: G-kod ur modalgrupp 1 och 0 funna, ej ok kombination
+6.5: Försöker röra sig utan att feedrate är satt(G0 undantag)
 """
 

@@ -1,0 +1,21 @@
+;This file is a test for spindle speed syntax and describes the rules for S-parameter
+;Spindle speed S is set with parameter S followed by a number(Integer, float)
+;Unit is RPM
+;Spindle speed needs to be >=0
+;Only one S can be present on a line
+
+;Examples of a program with ok spindle speed:
+
+N01 S10000
+N10 M03 S10000
+N20 G01 X10 S2000
+
+
+
+;Examples of illegal uses of spindle speed:
+
+N10 S-300 ;Negative value
+N20 S2000 S3000 ; Multiple S is not allowed
+N30 S ; No value assigned to S
+
+;Illegal uses of spindle speed will result in error and the program will not be able to start
