@@ -51,6 +51,6 @@ This software will not support these for now*
 
 ***Canned cycles are not supported by the GRBL, however this software will translate canned cycles into compatible code*
 
-The syntax for writing a block(one line) of code is to never use 2 or more commands from the same modal group, this will result in error. Commands from modal group 0 can never be combined with a command from another group.
+The syntax for writing a block(one line) of code is to never use 2 or more commands from the same modal group, this will result in error. Commands from modal group 0 can never be combined with a command from group 1.
 
 
